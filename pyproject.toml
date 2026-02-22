@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "voicelistener"
-version = "1.0.0"
-description = "Real-time voice recognition using Silero VAD and Whisper"
+version = "1.0.1"
+description = "Real-time voice recognition using Silero VAD and Whisper/Eleven Labs"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
@@ -19,6 +19,7 @@ dependencies = [
     "torch",
     "torchaudio",
     "faster-whisper",
+    "elevenlabs",
 ]
 
 [project.urls]

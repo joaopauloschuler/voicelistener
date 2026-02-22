@@ -1,12 +1,33 @@
 """CLI entry point: python -m voicelistener"""
 
-from voicelistener.transcribers import WhisperTranscriber
+import argparse
+
 from voicelistener.voicelistener import VoiceListener
+
+TRANSCRIBER_CHOICES = ["whisper", "elevenlabs"]
+
+
+def _make_transcriber(name: str):
+    if name == "whisper":
+        from voicelistener.transcribers.whispertranscriber import WhisperTranscriber
+        return WhisperTranscriber()
+    elif name == "elevenlabs":
+        from voicelistener.transcribers.elevenlabstranscriber import ElevenLabsTranscriber
+        return ElevenLabsTranscriber()
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Real-time voice listener")
+    parser.add_argument(
+        "--transcriber",
+        choices=TRANSCRIBER_CHOICES,
+        default="whisper",
+        help="Speech-to-text backend (default: whisper)",
+    )
+    args = parser.parse_args()
+
     print("Loading models...", flush=True)
-    transcriber = WhisperTranscriber()
+    transcriber = _make_transcriber(args.transcriber)
     listener = VoiceListener(
         transcriber=transcriber,
         on_speech_start=lambda: print("[speaking...]", flush=True),

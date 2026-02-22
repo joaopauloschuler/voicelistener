@@ -12,7 +12,8 @@ voicelistener/
 ├── requirements.txt
 └── transcribers/
     ├── __init__.py
-    └── whispertranscriber.py  # WhisperTranscriber class
+    ├── whispertranscriber.py      # WhisperTranscriber class
+    └── elevenlabstranscriber.py   # ElevenLabsTranscriber class
 ```
 
 ## Installation
@@ -24,17 +25,30 @@ pip install voicelistener
 ## CLI usage
 
 ```bash
+# Default (local Whisper)
 python -m voicelistener
+
+# ElevenLabs (requires ELEVENLABS_API_KEY env var)
+python -m voicelistener --transcriber elevenlabs
 ```
 
 Listens to your microphone, detects speech, and prints transcriptions to stdout. Press Ctrl+C to stop.
 
+| Flag | Default | Description |
+|---|---|---|
+| `--transcriber` | `whisper` | Speech-to-text backend (`whisper` or `elevenlabs`) |
+
 ## Library usage
 
 ```python
-from voicelistener import VoiceListener, WhisperTranscriber
+from voicelistener import VoiceListener, WhisperTranscriber, ElevenLabsTranscriber
 
+# Local Whisper
 transcriber = WhisperTranscriber(model="base.en")
+
+# Or ElevenLabs (set ELEVENLABS_API_KEY env var)
+# transcriber = ElevenLabsTranscriber()
+
 listener = VoiceListener(transcriber=transcriber)
 
 for text in listener:
