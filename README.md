@@ -64,6 +64,8 @@ listener.start()
 | `pre_buffer_ms` | `150` | Audio kept before VAD triggers |
 | `vad_threshold` | `0.5` | Silero VAD confidence threshold |
 | `on_transcription` | `None` | Callback invoked with each transcription |
+| `on_speech_start` | `None` | Callback invoked when speech is detected |
+| `on_speech_end` | `None` | Callback invoked when speech ends (silence timeout) |
 
 ### Custom transcriber
 

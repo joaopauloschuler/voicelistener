@@ -7,7 +7,11 @@ from voicelistener.voicelistener import VoiceListener
 def main():
     print("Loading models...", flush=True)
     transcriber = WhisperTranscriber()
-    listener = VoiceListener(transcriber=transcriber)
+    listener = VoiceListener(
+        transcriber=transcriber,
+        on_speech_start=lambda: print("[speaking...]", flush=True),
+        on_speech_end=lambda: print("[silent]", flush=True),
+    )
     print("Listening...\n", flush=True)
 
     try:

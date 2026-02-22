@@ -32,6 +32,8 @@ class VoiceListener:
         pre_buffer_ms=150,
         vad_threshold=0.5,
         on_transcription=None,
+        on_speech_start=None,
+        on_speech_end=None,
     ):
         self._transcriber = transcriber
         self._silence_frames_needed = silence_timeout_ms // FRAME_MS
@@ -39,6 +41,8 @@ class VoiceListener:
         self._pre_buffer_frames = pre_buffer_ms // FRAME_MS
         self._vad_threshold = vad_threshold
         self._on_transcription = on_transcription
+        self._on_speech_start = on_speech_start
+        self._on_speech_end = on_speech_end
 
         # Queues and state
         self._result_q = queue.Queue()
@@ -119,6 +123,8 @@ class VoiceListener:
         if speech_prob >= self._vad_threshold:
             if not self._is_speaking:
                 self._is_speaking = True
+                if self._on_speech_start:
+                    self._on_speech_start()
                 self._speech_buffer.extend(self._pre_buffer)
                 self._pre_buffer.clear()
             self._speech_buffer.append(frame)
@@ -131,6 +137,8 @@ class VoiceListener:
             if self._silent_frames >= self._silence_frames_needed:
                 self._is_speaking = False
                 self._silent_frames = 0
+                if self._on_speech_end:
+                    self._on_speech_end()
 
                 if len(self._speech_buffer) >= self._min_speech_frames:
                     self._transcribe_q.put(list(self._speech_buffer))
