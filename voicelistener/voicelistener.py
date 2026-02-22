@@ -1,14 +1,18 @@
 """VoiceListener: audio capture + VAD + transcription threading."""
+import os
 import sys
 import queue
 import collections
 import threading
 
+# Tell OpenMP/MKL threads to sleep when idle instead of spin-waiting.
+# Must be set before importing torch.
+os.environ.setdefault("OMP_WAIT_POLICY", "PASSIVE")
+os.environ.setdefault("KMP_BLOCKTIME", "0")
+
 import numpy as np
 import sounddevice as sd
 import torch
-
-torch.set_num_threads(1)
 
 SAMPLE_RATE = 16000
 FRAME_SAMPLES = 512
