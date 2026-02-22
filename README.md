@@ -15,10 +15,10 @@ voicelistener/
     └── whispertranscriber.py  # WhisperTranscriber class
 ```
 
-## Setup
+## Installation
 
 ```bash
-pip install -r voicelistener/requirements.txt
+pip install voicelistener
 ```
 
 ## CLI usage
