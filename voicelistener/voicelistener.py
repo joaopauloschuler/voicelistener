@@ -31,6 +31,7 @@ class VoiceListener:
         min_utterance_ms=250,
         pre_buffer_ms=150,
         vad_threshold=0.5,
+        energy_threshold=0.005,
         on_transcription=None,
         on_speech_start=None,
         on_speech_end=None,
@@ -40,6 +41,7 @@ class VoiceListener:
         self._min_speech_frames = min_utterance_ms // FRAME_MS
         self._pre_buffer_frames = pre_buffer_ms // FRAME_MS
         self._vad_threshold = vad_threshold
+        self._energy_threshold = energy_threshold
         self._on_transcription = on_transcription
         self._on_speech_start = on_speech_start
         self._on_speech_end = on_speech_end
@@ -117,6 +119,26 @@ class VoiceListener:
             print(f"[audio: {status}]", file=sys.stderr)
 
         frame = indata[:, 0].copy()
+
+        # Cheap energy gate: skip VAD inference on near-silent frames
+        rms = np.sqrt(np.mean(frame ** 2))
+        if rms < self._energy_threshold:
+            if self._is_speaking:
+                self._silent_frames += 1
+                self._speech_buffer.append(frame)
+                if self._silent_frames >= self._silence_frames_needed:
+                    self._is_speaking = False
+                    self._silent_frames = 0
+                    self._vad_model.reset_states()
+                    if self._on_speech_end:
+                        self._on_speech_end()
+                    if len(self._speech_buffer) >= self._min_speech_frames:
+                        self._transcribe_q.put(list(self._speech_buffer))
+                    self._speech_buffer.clear()
+            else:
+                self._pre_buffer.append(frame)
+            return
+
         frame_tensor = torch.from_numpy(frame)
         speech_prob = self._vad_model(frame_tensor, SAMPLE_RATE).item()
 
@@ -137,6 +159,7 @@ class VoiceListener:
             if self._silent_frames >= self._silence_frames_needed:
                 self._is_speaking = False
                 self._silent_frames = 0
+                self._vad_model.reset_states()
                 if self._on_speech_end:
                     self._on_speech_end()
 

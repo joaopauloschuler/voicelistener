@@ -63,6 +63,7 @@ listener.start()
 | `min_utterance_ms` | `250` | Minimum speech length to transcribe |
 | `pre_buffer_ms` | `150` | Audio kept before VAD triggers |
 | `vad_threshold` | `0.5` | Silero VAD confidence threshold |
+| `energy_threshold` | `0.005` | RMS energy below which VAD is skipped |
 | `on_transcription` | `None` | Callback invoked with each transcription |
 | `on_speech_start` | `None` | Callback invoked when speech is detected |
 | `on_speech_end` | `None` | Callback invoked when speech ends (silence timeout) |
