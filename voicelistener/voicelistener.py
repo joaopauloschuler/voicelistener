@@ -8,6 +8,7 @@ import numpy as np
 import sounddevice as sd
 import torch
 
+torch.set_num_threads(1)
 
 SAMPLE_RATE = 16000
 FRAME_SAMPLES = 512
