@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "voicelistener"
+version = "1.0.0"
+description = "Real-time voice recognition using Silero VAD and Whisper"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "Joao Paulo Schwarz Schuler", email = "43456488+joaopauloschuler@users.noreply.github.com" },
+]
+
+dependencies = [
+    "sounddevice",
+    "numpy",
+    "torch",
+    "torchaudio",
+    "faster-whisper",
+]
+
+[project.urls]
+Homepage = "https://github.com/joaopauloschuler/voicelistener"
+
+[tool.setuptools.packages.find]
+include = ["voicelistener*"]
