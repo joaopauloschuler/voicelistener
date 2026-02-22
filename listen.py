@@ -4,6 +4,7 @@
 import sys
 import queue
 import collections
+import threading
 import numpy as np
 import sounddevice as sd
 import torch
@@ -13,7 +14,7 @@ from faster_whisper import WhisperModel
 SAMPLE_RATE = 16000
 FRAME_MS = 32  # VAD frame size in ms (Silero needs >=512 samples at 16kHz)
 FRAME_SAMPLES = 512
-SILENCE_TIMEOUT_MS = 600  # silence duration to finalize utterance
+SILENCE_TIMEOUT_MS = 2000  # silence duration to finalize utterance
 MIN_UTTERANCE_MS = 250  # discard very short detections
 PRE_BUFFER_MS = 150  # audio to keep before VAD triggers
 VAD_THRESHOLD = 0.5
@@ -37,19 +38,30 @@ def load_models():
     return vad_model, whisper
 
 
-def transcribe(whisper, audio_frames):
-    """Run Whisper on accumulated audio frames."""
-    audio = np.concatenate(audio_frames)
-    # faster-whisper expects float32 numpy array
-    segments, _ = whisper.transcribe(audio, language="en", beam_size=3)
-    text = " ".join(seg.text for seg in segments).strip()
-    return text
+def transcribe_worker(whisper, transcribe_q):
+    """Worker thread: pulls audio chunks and transcribes them."""
+    while True:
+        audio_frames = transcribe_q.get()
+        if audio_frames is None:
+            break
+        audio = np.concatenate(audio_frames)
+        segments, _ = whisper.transcribe(audio, language="en", beam_size=3)
+        text = " ".join(seg.text for seg in segments).strip()
+        if text:
+            print(text, flush=True)
+        else:
+            print("(inaudible)", flush=True)
 
 
 def main():
     vad_model, whisper = load_models()
 
     audio_q = queue.Queue()
+    transcribe_q = queue.Queue()
+
+    # Start transcription thread
+    t = threading.Thread(target=transcribe_worker, args=(whisper, transcribe_q), daemon=True)
+    t.start()
 
     def audio_callback(indata, frames, time_info, status):
         if status:
@@ -98,11 +110,7 @@ def main():
                         silent_frames = 0
 
                         if len(speech_buffer) >= min_speech_frames:
-                            text = transcribe(whisper, speech_buffer)
-                            if text:
-                                print(text, flush=True)
-                            else:
-                                print("(inaudible)", flush=True)
+                            transcribe_q.put(list(speech_buffer))
                         else:
                             print("(skip)", flush=True)
 
