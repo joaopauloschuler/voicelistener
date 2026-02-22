@@ -1,5 +1,4 @@
 """VoiceListener: audio capture + VAD + transcription threading."""
-
 import sys
 import queue
 import collections
@@ -42,9 +41,9 @@ class VoiceListener:
         self._on_transcription = on_transcription
 
         # Queues and state
-        self._audio_q = queue.Queue()
         self._result_q = queue.Queue()
         self._running = False
+        self._stop_event = threading.Event()
         self._threads = []
 
         # Load Silero VAD
@@ -59,14 +58,21 @@ class VoiceListener:
         if self._running:
             return
         self._running = True
+        self._stop_event.clear()
 
         self._transcribe_q = queue.Queue()
+
+        # VAD state – reset each start
+        self._speech_buffer = []
+        self._pre_buffer = collections.deque(maxlen=self._pre_buffer_frames)
+        self._silent_frames = 0
+        self._is_speaking = False
 
         t = threading.Thread(target=self._transcribe_worker, daemon=True)
         t.start()
         self._threads.append(t)
 
-        t2 = threading.Thread(target=self._vad_loop, daemon=True)
+        t2 = threading.Thread(target=self._stream_holder, daemon=True)
         t2.start()
         self._threads.append(t2)
 
@@ -75,6 +81,7 @@ class VoiceListener:
         if not self._running:
             return
         self._running = False
+        self._stop_event.set()
         try:
             self._transcribe_q.put(None)  # sentinel for worker
         except Exception:
@@ -101,17 +108,40 @@ class VoiceListener:
     # ── Internal ──────────────────────────────────────────────────────────
 
     def _audio_callback(self, indata, frames, time_info, status):
+        """Called by sounddevice for each audio frame — runs VAD inline."""
         if status:
             print(f"[audio: {status}]", file=sys.stderr)
-        self._audio_q.put(indata[:, 0].copy())
 
-    def _vad_loop(self):
-        """Capture audio, run VAD, and dispatch complete utterances."""
-        speech_buffer = []
-        pre_buffer = collections.deque(maxlen=self._pre_buffer_frames)
-        silent_frames = 0
-        is_speaking = False
+        frame = indata[:, 0].copy()
+        frame_tensor = torch.from_numpy(frame)
+        speech_prob = self._vad_model(frame_tensor, SAMPLE_RATE).item()
 
+        if speech_prob >= self._vad_threshold:
+            if not self._is_speaking:
+                self._is_speaking = True
+                self._speech_buffer.extend(self._pre_buffer)
+                self._pre_buffer.clear()
+            self._speech_buffer.append(frame)
+            self._silent_frames = 0
+
+        elif self._is_speaking:
+            self._speech_buffer.append(frame)
+            self._silent_frames += 1
+
+            if self._silent_frames >= self._silence_frames_needed:
+                self._is_speaking = False
+                self._silent_frames = 0
+
+                if len(self._speech_buffer) >= self._min_speech_frames:
+                    self._transcribe_q.put(list(self._speech_buffer))
+
+                self._speech_buffer.clear()
+
+        else:
+            self._pre_buffer.append(frame)
+
+    def _stream_holder(self):
+        """Open the audio stream and keep it alive until stop is requested."""
         stream = sd.InputStream(
             samplerate=SAMPLE_RATE,
             channels=1,
@@ -119,40 +149,8 @@ class VoiceListener:
             blocksize=FRAME_SAMPLES,
             callback=self._audio_callback,
         )
-
         with stream:
-            while self._running:
-                try:
-                    frame = self._audio_q.get(timeout=0.1)
-                except queue.Empty:
-                    continue
-
-                frame_tensor = torch.from_numpy(frame)
-                speech_prob = self._vad_model(frame_tensor, SAMPLE_RATE).item()
-
-                if speech_prob >= self._vad_threshold:
-                    if not is_speaking:
-                        is_speaking = True
-                        speech_buffer.extend(pre_buffer)
-                        pre_buffer.clear()
-                    speech_buffer.append(frame)
-                    silent_frames = 0
-
-                elif is_speaking:
-                    speech_buffer.append(frame)
-                    silent_frames += 1
-
-                    if silent_frames >= self._silence_frames_needed:
-                        is_speaking = False
-                        silent_frames = 0
-
-                        if len(speech_buffer) >= self._min_speech_frames:
-                            self._transcribe_q.put(list(speech_buffer))
-
-                        speech_buffer.clear()
-
-                else:
-                    pre_buffer.append(frame)
+            self._stop_event.wait()
 
     def _transcribe_worker(self):
         """Pull audio chunks from the queue and transcribe them."""
