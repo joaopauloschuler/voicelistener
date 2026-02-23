@@ -1,6 +1,6 @@
 # voicelistener
 
-Real-time voice recognition using Silero VAD and Whisper.
+Real-time voice recognition using Whisper or ElevenLabs. Speech detection uses fast RMS energy gating by default; Silero VAD is available as an optional higher-accuracy mode.
 
 ## Structure
 
@@ -76,8 +76,9 @@ listener.start()
 | `silence_timeout_ms` | `2000` | Silence duration (ms) to finalize an utterance |
 | `min_utterance_ms` | `250` | Minimum speech length to transcribe |
 | `pre_buffer_ms` | `150` | Audio kept before VAD triggers |
-| `vad_threshold` | `0.5` | Silero VAD confidence threshold |
-| `energy_threshold` | `0.005` | RMS energy below which VAD is skipped |
+| `energy_only` | `True` | Use RMS energy for speech detection (no torch required); set `False` to enable Silero VAD |
+| `vad_threshold` | `0.5` | Silero VAD confidence threshold (used only when `energy_only=False`) |
+| `energy_threshold` | `0.005` | RMS energy threshold; frames below this are treated as silence |
 | `on_transcription` | `None` | Callback invoked with each transcription |
 | `on_speech_start` | `None` | Callback invoked when speech is detected |
 | `on_speech_end` | `None` | Callback invoked when speech ends (silence timeout) |
