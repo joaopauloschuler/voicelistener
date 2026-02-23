@@ -5,18 +5,12 @@ import queue
 import collections
 import threading
 
-# Tell OpenMP/MKL threads to sleep when idle instead of spin-waiting.
-# Must be set before importing torch.
-os.environ.setdefault("OMP_WAIT_POLICY", "PASSIVE")
-os.environ.setdefault("KMP_BLOCKTIME", "0")
-
 import numpy as np
 import sounddevice as sd
-import torch
 
-SAMPLE_RATE = 16000
-FRAME_SAMPLES = 512
 FRAME_MS = 32
+SAMPLE_RATE = FRAME_MS*500
+FRAME_SAMPLES = 16*FRAME_MS
 
 
 class VoiceListener:
@@ -37,6 +31,7 @@ class VoiceListener:
         pre_buffer_ms=150,
         vad_threshold=0.5,
         energy_threshold=0.005,
+        energy_only=True,
         on_transcription=None,
         on_speech_start=None,
         on_speech_end=None,
@@ -47,6 +42,7 @@ class VoiceListener:
         self._pre_buffer_frames = pre_buffer_ms // FRAME_MS
         self._vad_threshold = vad_threshold
         self._energy_threshold = energy_threshold
+        self._energy_only = energy_only
         self._on_transcription = on_transcription
         self._on_speech_start = on_speech_start
         self._on_speech_end = on_speech_end
@@ -57,10 +53,8 @@ class VoiceListener:
         self._stop_event = threading.Event()
         self._threads = []
 
-        # Load Silero VAD
-        self._vad_model, _ = torch.hub.load(
-            "snakers4/silero-vad", "silero_vad", trust_repo=True
-        )
+        # Lazily loaded Silero VAD (only when energy_only=False)
+        self._vad_model = None
 
     # ── Public API ────────────────────────────────────────────────────────
 
@@ -68,6 +62,9 @@ class VoiceListener:
         """Start audio capture and transcription threads."""
         if self._running:
             return
+        if not self._energy_only:
+            self._load_vad()
+
         self._running = True
         self._stop_event.clear()
 
@@ -118,61 +115,69 @@ class VoiceListener:
 
     # ── Internal ──────────────────────────────────────────────────────────
 
+    def _load_vad(self):
+        """Load the Silero VAD model on first use."""
+        if self._vad_model is not None:
+            return
+        import torch
+
+        # Tell OpenMP/MKL threads to sleep when idle instead of spin-waiting.
+        os.environ.setdefault("OMP_WAIT_POLICY", "PASSIVE")
+        os.environ.setdefault("KMP_BLOCKTIME", "0")
+
+        self._vad_model, _ = torch.hub.load(
+            "snakers4/silero-vad", "silero_vad", trust_repo=True
+        )
+
+    def _end_speech(self):
+        """Finalize the current utterance and queue it for transcription."""
+        self._is_speaking = False
+        self._silent_frames = 0
+        if self._vad_model is not None:
+            self._vad_model.reset_states()
+        if self._on_speech_end:
+            self._on_speech_end()
+        if len(self._speech_buffer) >= self._min_speech_frames:
+            self._transcribe_q.put(list(self._speech_buffer))
+        self._speech_buffer.clear()
+
+    def _begin_speech(self, frame):
+        """Transition into speaking state."""
+        self._is_speaking = True
+        if self._on_speech_start:
+            self._on_speech_start()
+        self._speech_buffer.extend(self._pre_buffer)
+        self._pre_buffer.clear()
+        self._speech_buffer.append(frame)
+        self._silent_frames = 0
+
     def _audio_callback(self, indata, frames, time_info, status):
-        """Called by sounddevice for each audio frame — runs VAD inline."""
+        """Called by sounddevice for each audio frame."""
         if status:
             print(f"[audio: {status}]", file=sys.stderr)
 
         frame = indata[:, 0].copy()
-
-        # Cheap energy gate: skip VAD inference on near-silent frames
         rms = np.sqrt(np.mean(frame ** 2))
-        if rms < self._energy_threshold:
-            if self._is_speaking:
-                self._silent_frames += 1
-                self._speech_buffer.append(frame)
-                if self._silent_frames >= self._silence_frames_needed:
-                    self._is_speaking = False
-                    self._silent_frames = 0
-                    self._vad_model.reset_states()
-                    if self._on_speech_end:
-                        self._on_speech_end()
-                    if len(self._speech_buffer) >= self._min_speech_frames:
-                        self._transcribe_q.put(list(self._speech_buffer))
-                    self._speech_buffer.clear()
-            else:
-                self._pre_buffer.append(frame)
-            return
+        is_active = rms >= self._energy_threshold
 
-        frame_tensor = torch.from_numpy(frame)
-        speech_prob = self._vad_model(frame_tensor, SAMPLE_RATE).item()
+        if not self._energy_only and is_active:
+            import torch
 
-        if speech_prob >= self._vad_threshold:
+            frame_tensor = torch.from_numpy(frame)
+            speech_prob = self._vad_model(frame_tensor, SAMPLE_RATE).item()
+            is_active = speech_prob >= self._vad_threshold
+
+        if is_active:
             if not self._is_speaking:
-                self._is_speaking = True
-                if self._on_speech_start:
-                    self._on_speech_start()
-                self._speech_buffer.extend(self._pre_buffer)
-                self._pre_buffer.clear()
-            self._speech_buffer.append(frame)
-            self._silent_frames = 0
-
+                self._begin_speech(frame)
+            else:
+                self._speech_buffer.append(frame)
+                self._silent_frames = 0
         elif self._is_speaking:
             self._speech_buffer.append(frame)
             self._silent_frames += 1
-
             if self._silent_frames >= self._silence_frames_needed:
-                self._is_speaking = False
-                self._silent_frames = 0
-                self._vad_model.reset_states()
-                if self._on_speech_end:
-                    self._on_speech_end()
-
-                if len(self._speech_buffer) >= self._min_speech_frames:
-                    self._transcribe_q.put(list(self._speech_buffer))
-
-                self._speech_buffer.clear()
-
+                self._end_speech()
         else:
             self._pre_buffer.append(frame)
 
