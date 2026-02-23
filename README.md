@@ -44,10 +44,10 @@ Listens to your microphone, detects speech, and prints transcriptions to stdout.
 from voicelistener import VoiceListener, WhisperTranscriber, ElevenLabsTranscriber
 
 # Local Whisper
-transcriber = WhisperTranscriber(model="base.en")
+transcriber = WhisperTranscriber(model_id="base.en")
 
 # Or ElevenLabs (set ELEVENLABS_API_KEY env var)
-# transcriber = ElevenLabsTranscriber()
+# transcriber = ElevenLabsTranscriber(model_id="scribe_v2")
 
 listener = VoiceListener(transcriber=transcriber)
 

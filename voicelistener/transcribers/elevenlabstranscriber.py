@@ -11,9 +11,10 @@ from elevenlabs import ElevenLabs
 class ElevenLabsTranscriber:
     """Transcribes audio using ElevenLabs Scribe API."""
 
-    def __init__(self):
+    def __init__(self, model_id="scribe_v2"):
         api_key = os.environ["ELEVENLABS_API_KEY"]
         self._client = ElevenLabs(api_key=api_key)
+        self._model_id = model_id
 
     def transcribe(self, audio: np.ndarray) -> str:
         """Transcribe a float32 numpy audio array to text."""
@@ -28,6 +29,6 @@ class ElevenLabsTranscriber:
 
         response = self._client.speech_to_text.convert(
             file=buf,
-            model_id="scribe_v2",
+            model_id=self._model_id,
         )
         return response.text.strip()
