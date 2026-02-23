@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "voicelistener"
-version = "1.0.1"
+version = "1.0.2"
 description = "Real-time voice recognition using Silero VAD and Whisper/Eleven Labs"
 readme = "README.md"
 license = "MIT"
